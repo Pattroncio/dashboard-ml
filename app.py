@@ -143,6 +143,10 @@ def home():
 
 # --- O "RUN" (Ouvir em toda a rede) ---
 if __name__ == "__main__":
-    print("Iniciando a Cozinha (Servidor) em http://0.0.0.0:5000")
-    # O 'host="0.0.0.0"' é o que permite que o Render (e a rede local) acedam
-    app.run(host='0.0.0.0', port=5000)
+    # O 'Render' (e outros) define a porta na variável de ambiente 'PORT'
+    # Se não encontrar, usa a 5000 para testes locais.
+    import os
+    port = int(os.environ.get('PORT', 5000))
+
+    print(f"Iniciando O (Servidor) em http://0.0.0.0:{port}")
+    app.run(host='0.0.0.0', port=port)
