@@ -1,6 +1,5 @@
 import requests
 import datetime
-import pandas as pd
 import time
 import locale
 import os
@@ -169,3 +168,4 @@ if __name__ == "__main__":
     
     print(f"Iniciando a Cozinha (Servidor) em http://0.0.0.0:{port}")
     app.run(host='0.0.0.0', port=port)
+
