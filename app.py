@@ -3,9 +3,11 @@ import datetime
 import pandas as pd
 import time
 import locale
-# Importa o 'render_template' para servir o index.html
+import os
 from flask import Flask, jsonify, render_template
 from flask_cors import CORS
+# --- MUDANÇA 1: Importar o 'ThreadPoolExecutor' ---
+from concurrent.futures import ThreadPoolExecutor
 
 app = Flask(__name__)
 CORS(app)
@@ -110,6 +112,9 @@ def process_daily_data(empresa_nome, empresa_info, target_date):
     quantidade_vendas = len(all_orders)
     conversao = (quantidade_vendas / visitas_do_dia * 100) if visitas_do_dia > 0 else 0
     preco_medio = total_faturamento / total_unidades_vendidas if total_unidades_vendidas > 0 else 0
+    
+    print(f"--- DADOS PROCESSADOS PARA: {empresa_nome} ---")
+    
     return {
         "nome": empresa_nome, "data_dados": target_date.strftime("%d/%m/%Y"),
         "faturamento": total_faturamento, "vendas": quantidade_vendas,
@@ -120,16 +125,31 @@ def process_daily_data(empresa_nome, empresa_info, target_date):
 
 
 # --- O "GARÇOM" (API de Dados) ---
-@app.route('/api/dados')
+@app.route('/api/dados') 
 def get_dashboard_data():
-    print("--- PEDIDO RECEBIDO: Buscando dados frescos do ML ---")
+    print("--- PEDIDO RECEBIDO: Buscando dados frescos do ML (EM PARALELO) ---")
     hoje = datetime.date.today()
+    
     results = []
-    for nome, info in EMPRESAS.items():
-        dados = process_daily_data(nome, info, hoje)
-        if dados:
-            results.append(dados)
-        time.sleep(1)
+    
+    # --- MUDANÇA 2: Usar o ThreadPoolExecutor ---
+    # Isto vai rodar a função 'process_daily_data' para todas as empresas
+    # ao mesmo tempo, usando 5 "trabalhadores" (threads)
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        # Criamos uma lista de "tarefas futuras"
+        tarefas_futuras = []
+        for nome, info in EMPRESAS.items():
+            # "Submete" a tarefa para ser executada
+            tarefas_futuras.append(
+                executor.submit(process_daily_data, nome, info, hoje)
+            )
+        
+        # Esperamos que cada tarefa termine e pegamos os resultados
+        for tarefa in tarefas_futuras:
+            dados = tarefa.result() # Pega o resultado da tarefa
+            if dados:
+                results.append(dados)
+
     print("--- DADOS PRONTOS: Entregando para o Salão (Frontend) ---")
     return jsonify(results)
 
@@ -145,8 +165,7 @@ def home():
 if __name__ == "__main__":
     # O 'Render' (e outros) define a porta na variável de ambiente 'PORT'
     # Se não encontrar, usa a 5000 para testes locais.
-    import os
     port = int(os.environ.get('PORT', 5000))
-
-    print(f"Iniciando O (Servidor) em http://0.0.0.0:{port}")
+    
+    print(f"Iniciando a Cozinha (Servidor) em http://0.0.0.0:{port}")
     app.run(host='0.0.0.0', port=port)
