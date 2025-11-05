@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Vendas ML</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Define as cores personalizadas baseadas no seu script */
+        body { font-family: 'Arial', sans-serif; }
+        .bg-ml-yellow { background-color: #FFF059; }
+        .bg-ml-fundo { background-color: #EEEEEE; }
+        .text-ml-dark { color: #333333; }
+        .text-ml-cancelado { color: #AA0000; }
+
+        /* Animação de "Loading" */
+        .card-loading {
+            height: 350px; display: flex; align-items: center;
+            justify-content: center; background-color: #f9f9f9;
+            border-radius: 0.5rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border: 1px solid #e5e7eb;
+        }
+        .spinner {
+            width: 40px; height: 40px; border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db; border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-ml-fundo min-h-screen">
+
+    <header class="bg-ml-yellow p-3 shadow-md">
+        <div class="container mx-auto flex items-center justify-between flex-wrap">
+            <div>
+                <span class="text-ml-dark font-semibold text-sm mr-2">Dados de:</span>
+                <span id="label-data-atual" class="text-ml-dark text-sm">Carregando data...</span>
+            </div>
+            <div id="error-message-container" class="hidden w-full md:w-auto bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded-md mt-2 md:mt-0">
+                <span class="font-bold">Erro:</span>
+                <span id="error-message"></span>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto p-4 md:p-8">
+        <div class="grid grid-cols-1 md:grid-cols-6 gap-6">
+            
+            <div id="card-base-pecas" class="md:col-span-3 bg-white rounded-lg shadow-lg p-6 border border-gray-200 card-loading">
+                <div class="spinner"></div> </div>
+            
+            <div id="card-base-truck" class="md:col-span-3 bg-white rounded-lg shadow-lg p-6 border border-gray-200 card-loading">
+                <div class="spinner"></div> </div>
+
+            <div id="card-base-tech" class="md:col-span-2 bg-white rounded-lg shadow-lg p-6 border border-gray-200 card-loading">
+                <div class="spinner"></div> </div>
+            
+            <div id="card-base-almeidas" class="md:col-span-2 bg-white rounded-lg shadow-lg p-6 border border-gray-200 card-loading">
+                <div class="spinner"></div> </div>
+
+            <div id="card-base-importadora" class="md:col-span-2 bg-white rounded-lg shadow-lg p-6 border border-gray-200 card-loading">
+                <div class="spinner"></div> </div>
+        </div>
+    </main>
+
+    <script>
+        // --- LÓGICA DO "SALÃO" (Frontend) ---
+
+        // Mapeia os nomes das empresas para os IDs dos cards no HTML
+        const EMPRESAS_MAP = {
+            "Base Importadora": "card-base-importadora",
+            "Base Almeidas": "card-base-almeidas",
+            "Base Truck": "card-base-truck",
+            "Base Peças": "card-base-pecas",
+            "Base Tech": "card-base-tech"
+        };
+        
+        // O "Telefone" para ligar para a Cozinha (Backend)
+        const API_URL = 'http://127.0.0.1:5000/api/dados';
+
+        /**
+         * Formata um número como moeda (R$)
+         */
+        function formatarMoeda(valor) {
+            if (valor === null || typeof valor === 'undefined') return 'R$ 0,00';
+            if (valor >= 1000000) return `R$ ${(valor / 1000000).toFixed(2).replace('.', ',')} Mi`;
+            if (valor >= 100000) return `R$ ${(valor / 1000).toFixed(2).replace('.', ',')} Mil`;
+            return `R$ ${valor.toFixed(2).replace('.', ',')}`;
+        }
+
+        /**
+         * Atualiza a data no cabeçalho
+         */
+        function atualizarData() {
+            try {
+                const hoje = new Date();
+                const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+                let dataFormatada = new Intl.DateTimeFormat('pt-BR', options).format(hoje);
+                document.getElementById('label-data-atual').textContent = dataFormatada.charAt(0).toUpperCase() + dataFormatada.slice(1);
+            } catch (e) {
+                document.getElementById('label-data-atual').textContent = "Data indisível";
+            }
+        }
+
+        /**
+         * Cria o HTML interno para um card de empresa (só na primeira vez)
+         */
+        function criarTemplateCard(nomeEmpresa, dados) {
+            // Normaliza o ID para o caso de "Base Peças"
+            const idPrefix = nomeEmpresa.toLowerCase().replace('ç', 'c').replace(' ', '-');
+            
+            // Garante que todos os dados existam para evitar "undefined"
+            const faturamento = dados.faturamento || 0;
+            const visitas = dados.visitas || 0;
+            const compradores = dados.compradores || 0;
+            const conversao = dados.conversao || 0;
+            const vendas = dados.vendas || 0;
+            const unidades = dados.unidades || 0;
+            const preco_medio = dados.preco_medio || 0;
+            const faturamento_cancelado = dados.faturamento_cancelado || 0;
+
+            // Este é o HTML que será injetado no card
+            return `
+                <h2 class="text-xl font-bold text-ml-dark text-center uppercase">${nomeEmpresa}</h2>
+                <p class="text-3xl font-bold text-ml-dark text-center my-4" id="${idPrefix}-faturamento">${formatarMoeda(faturamento)}</p>
+                <hr class="my-4">
+                <div class="grid grid-cols-3 gap-x-4 gap-y-5">
+                    <div>
+                        <span class="text-xs text-gray-500 block">Visitas Únicas</span>
+                        <span class="text-lg font-bold text-ml-dark" id="${idPrefix}-visitas">${visitas}</span>
+                    </div>
+                    <div>
+                        <span class="text-xs text-gray-500 block">Compradores</span>
+                        <span class="text-lg font-bold text-ml-dark" id="${idPrefix}-compradores">${compradores}</span>
+                    </div>
+                    <div>
+                        <span class="text-xs text-gray-500 block">Conversão</span>
+                        <span class="text-lg font-bold text-ml-dark" id="${idPrefix}-conversao">${conversao.toFixed(2).replace('.', ',')}%</span>
+                    </div>
+                    <div>
+                        <span class="text-xs text-gray-500 block">Qtd. de Vendas</span>
+                        <span class="text-lg font-bold text-ml-dark" id="${idPrefix}-vendas">${vendas}</span>
+                    </div>
+                    <div>
+                        <span class="text-xs text-gray-500 block">Unidades</span>
+                        <span class="text-lg font-bold text-ml-dark" id="${idPrefix}-unidades">${unidades}</span>
+                    </div>
+                    <div>
+                        <span class="text-xs text-gray-500 block">Preço Médio</span>
+                        <span class="text-lg font-bold text-ml-dark" id="${idPrefix}-preco_medio">R$ ${preco_medio.toFixed(2).replace('.', ',')}</span>
+                    </div>
+                </div>
+                <hr class="my-4">
+                <div class="text-center mt-4">
+                    <span class="text-xs text-gray-500 block">Faturamento Cancelado</span>
+                    <span class="text-lg font-bold text-ml-cancelado" id="${idPrefix}-faturamento_cancelado">${formatarMoeda(faturamento_cancelado)}</span>
+                </div>
+            `;
+        }
+
+        /**
+         * Pega os dados vindos da Cozinha (Backend) e coloca no Salão (Frontend)
+         */
+        function aplicarDadosNaGUI(resultados) {
+            for (const data of resultados) {
+                const nome = data.nome;
+                const cardId = EMPRESAS_MAP[nome];
+                if (!cardId) continue; // Pula se o nome não for encontrado
+
+                const cardElement = document.getElementById(cardId);
+                const idPrefix = nome.toLowerCase().replace('ç', 'c').replace(' ', '-');
+
+                // Se o card ainda está mostrando o "loading", cria o HTML pela primeira vez
+                if (cardElement.classList.contains('card-loading')) {
+                    cardElement.innerHTML = criarTemplateCard(nome, data);
+                    cardElement.classList.remove('card-loading');
+                    cardElement.style.height = 'auto'; // Remove altura fixa
+                } 
+                // Se o card já existe, apenas atualiza os números
+                else {
+                    document.getElementById(`${idPrefix}-faturamento`).textContent = formatarMoeda(data.faturamento);
+                    document.getElementById(`${idPrefix}-visitas`).textContent = data.visitas;
+                    document.getElementById(`${idPrefix}-compradores`).textContent = data.compradores;
+                    document.getElementById(`${idPrefix}-conversao`).textContent = `${data.conversao.toFixed(2).replace('.', ',')}%`;
+                    document.getElementById(`${idPrefix}-vendas`).textContent = data.vendas;
+                    document.getElementById(`${idPrefix}-unidades`).textContent = data.unidades;
+                    document.getElementById(`${idPrefix}-preco_medio`).textContent = `R$ ${data.preco_medio.toFixed(2).replace('.', ',')}`;
+                    document.getElementById(`${idPrefix}-faturamento_cancelado`).textContent = formatarMoeda(data.faturamento_cancelado);
+                }
+            }
+        }
+        
+        /**
+         * Função principal: O "Garçom" que busca os dados
+         */
+        async function fetchDashboardData() {
+            const errorContainer = document.getElementById('error-message-container');
+            const errorMessage = document.getElementById('error-message');
+
+            try {
+                // 1. O Salão "liga" para a Cozinha
+                const response = await fetch(API_URL);
+                
+                // 2. Verifica se a Cozinha está aberta e respondeu
+                if (!response.ok) {
+                    throw new Error(`A Cozinha respondeu com erro: ${response.statusText}`);
+                }
+                
+                // 3. Pega os "pratos" (dados)
+                const data = await response.json();
+                
+                // 4. "Serve" os dados nos cards
+                aplicarDadosNaGUI(data);
+
+                // 5. Se deu tudo certo, esconde a mensagem de erro
+                errorContainer.classList.add('hidden');
+
+            } catch (error) {
+                console.error("Erro ao buscar dados do dashboard:", error);
+                // AVISA O UTILIZADOR QUE A COZINHA ESTÁ FECHADA
+                // O erro "Failed to fetch" significa que o 'app.py' (Cozinha) não está a rodar.
+                errorMessage.textContent = 'Não foi possível ligar para a Cozinha (Failed to fetch). O servidor "app.py" está a rodar?';
+                errorContainer.classList.remove('hidden');
+            }
+        }
+
+        // --- INICIALIZAÇÃO ---
+        
+        // Quando a página (Salão) abre:
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log("Salão (Frontend) aberto.");
+            atualizarData(); // Atualiza a data no topo
+            fetchDashboardData(); // Pede os dados pela primeira vez
+
+            // Define o intervalo de atualização
+            // A cada 10 segundos, o Salão vai pedir dados novos à Cozinha
+            // Isto substitui o seu `self.after(10000, ...)` do tkinter
+            setInterval(fetchDashboardData, 10000); // 10000 ms = 10 segundos
+        });
+
+    </script>
+</body>
+</html>
